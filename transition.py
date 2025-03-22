@@ -37,13 +37,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Delay for transition
-time.sleep(1)
+time.sleep(3)
 
-# JavaScript-based redirection
-st.markdown("""
-<script>
-    setTimeout(function() {
-        window.location.href = "/testing";
-    }, 1000);
-</script>
-""", unsafe_allow_html=True)
+# Redirect to testing.py
+st.session_state["redirect"] = True
+st.experimental_rerun()
