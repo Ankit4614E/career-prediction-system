@@ -114,21 +114,21 @@ with feature_cols[0]:
     card(
         title="Career Pathway",
         text="Visualize your career progression",
-        image="1534996.png"
+        image="E:\Destiny\1534996.png"
     )
 
 with feature_cols[1]:
     card(
         title="Skill Gap Analysis",
         text="Identify areas for improvement",
-        image="1534968.png"
+        image="E:\Destiny\1534968.png"
     )
 
 with feature_cols[2]:
     card(
         title="Course Recommendations",
         text="Personalized learning resources",
-        image="1534959.png"
+        image="E:\Destiny\1534959.png"
     )
 
 # ========== Prediction Section ========== #
