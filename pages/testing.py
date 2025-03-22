@@ -166,7 +166,7 @@ with st.expander("🔍 Step 1: Rate Your Skills", expanded=True):
                         background-color: #fafafa;
                     }
                     :hover {
-                        background-color: #f0f2f6;
+                        background-color: #bbbbbd;
                     }
                 """,
             ):
