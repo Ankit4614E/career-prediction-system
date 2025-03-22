@@ -37,7 +37,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Delay for transition
-time.sleep(3)
+time.sleep(1)
 
 # JavaScript-based redirection
 st.markdown("""
