@@ -36,11 +36,8 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# JavaScript-based redirect after 3 seconds
-st.markdown("""
-<script>
-    setTimeout(function() {
-        window.location.href = "/testing.py";
-    }, 3000);
-</script>
-""", unsafe_allow_html=True)
+# Delay for transition
+time.sleep(3)
+
+# Navigate to testing.py
+st.switch_page("pages/testing.py")  # Ensure 'testing.py' is inside 'pages' directory
