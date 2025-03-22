@@ -6,6 +6,9 @@ from streamlit_extras.colored_header import colored_header
 from streamlit_extras.card import card
 from streamlit_extras.stylable_container import stylable_container
 
+# Mobile viewport meta tag
+st.markdown('<meta name="viewport" content="width=device-width, initial-scale=1.0">', unsafe_allow_html=True)
+
 # Page configuration
 st.set_page_config(
     page_title="Career Path Predictor Pro",
@@ -77,9 +80,10 @@ if missing_features or extra_features:
         st.write("Features in UI but missing in encoder:", extra_features)
     st.stop()
 
-# Custom CSS
+# Updated CSS with mobile optimizations
 st.markdown("""
 <style>
+    /* Base styles */
     .stSelectbox [data-testid='stMarkdownContainer'] {
         font-size: 16px;
     }
@@ -103,27 +107,46 @@ st.markdown("""
         margin: 2rem 0;
         box-shadow: 0 4px 12px rgba(0,0,0,0.08);
     }
-    .stProgress > div > div {
-        background-color: #4B32C3;
+    
+    /* Mobile optimizations */
+    @media (max-width: 768px) {
+        .hero-image {
+            display: none !important;
+        }
+        .stButton>button {
+            width: 100% !important;
+            padding: 12px !important;
+            margin: 8px 0 !important;
+        }
+        .skill-card {
+            padding: 1rem !important;
+            margin: 0.5rem 0 !important;
+        }
+        .stImage {
+            max-width: 100% !important;
+        }
+        .feature-card {
+            margin: 1rem 0 !important;
+            width: 100% !important;
+        }
+        footer {
+            padding: 1rem 0 !important;
+        }
+        footer a {
+            font-size: 0.9rem !important;
+        }
     }
-    .metric-label {
-        font-weight: bold;
-        margin-bottom: 0;
-    }
-    .metric-value {
-        font-size: 1.2rem;
-        font-weight: 500;
-    }
-    footer {
-        margin-top: 3rem;
-        padding-top: 1rem;
-        border-top: 1px solid #ddd;
-        text-align: center;
+    
+    /* Desktop enhancements */
+    @media (min-width: 769px) {
+        .stImage {
+            max-width: 150px !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
 
-# ========== Hero Section ========== #
+# ========== Mobile-Optimized Hero Section ========== #
 colored_header(
     label="🚀 Career Path Predictor Pro",
     description="Discover your ideal tech career based on your skills",
@@ -133,7 +156,9 @@ colored_header(
 with st.container():
     cols = st.columns([1, 3])
     with cols[0]:
-        st.image("https://cdn-icons-png.flaticon.com/512/1055/1055666.png", width=120)
+        st.image("https://cdn-icons-png.flaticon.com/512/1055/1055666.png", 
+                width=120, use_column_width='auto', clamp=True, 
+                class_="hero-image")
     with cols[1]:
         st.markdown("""
         ##### Welcome to Your Career Navigator!
@@ -142,7 +167,7 @@ with st.container():
         This tool analyzes your technical skills and proficiency levels to recommend the most suitable career path in the tech industry.
         """)
 
-# ========== Skill Input Section ========== #
+# ========== Mobile-Friendly Skill Input Section ========== #
 with st.expander("🔍 Step 1: Rate Your Skills", expanded=True):
     st.info("💡 Select your proficiency level for each skill area")
     
@@ -153,64 +178,65 @@ with st.expander("🔍 Step 1: Rate Your Skills", expanded=True):
     ]
     
     for category, skills in categories.items():
-        st.subheader(f"📚 {category}")
-        for skill in skills:
-            with stylable_container(
-                key=f"skill_{skill}",
-                css_styles="""
-                    {
-                        border: 1px solid rgba(49, 51, 63, 0.2);
-                        border-radius: 0.5rem;
-                        padding: 1rem;
-                        margin: 0.5rem 0;
-                        background-color: #fafafa;
-                    }
-                    :hover {
-                        background-color: #f0f2f6;
-                    }
-                """,
-            ):
-                user_inputs[skill] = st.selectbox(
-                    f"{skill} Level",
-                    proficiency_levels,
-                    index=3,
-                    key=skill
-                )
+        with st.expander(f"📚 {category}", expanded=False):  # Nested expanders for mobile
+            for skill in skills:
+                with stylable_container(
+                    key=f"skill_{skill}",
+                    css_styles="""
+                        {
+                            border: 1px solid rgba(49, 51, 63, 0.2);
+                            border-radius: 0.5rem;
+                            padding: 1rem;
+                            margin: 0.5rem 0;
+                            background-color: #fafafa;
+                        }
+                        :hover {
+                            background-color: #f0f2f6;
+                        }
+                        @media (max-width: 768px) {
+                            padding: 0.75rem !important;
+                            margin: 0.25rem 0 !important;
+                        }
+                    """,
+                ):
+                    user_inputs[skill] = st.selectbox(
+                        f"{skill} Level",
+                        proficiency_levels,
+                        index=3,
+                        key=skill
+                    )
 
-# ========== New Features Section ========== #
+# ========== Responsive Features Section ========== #
 st.divider()
 st.header("✨ Enhanced Features")
 
-feature_cols = st.columns(3)
-with feature_cols[0]:
+# Mobile-friendly feature cards
+with st.container():
     card(
         title="Career Pathway",
         text="Visualize your potential career progression and advancement opportunities",
-        image="https://cdn-icons-png.flaticon.com/512/1534/1534996.png"
+        image="https://cdn-icons-png.flaticon.com/512/1534/1534996.png",
+        styles={"card": "margin: 1rem 0; width: 100% !important;"}
     )
-
-with feature_cols[1]:
+    
     card(
         title="Skill Gap Analysis",
         text="Identify areas for improvement based on industry requirements",
-        image="https://cdn-icons-png.flaticon.com/512/1534/1534968.png"
+        image="https://cdn-icons-png.flaticon.com/512/1534/1534968.png",
+        styles={"card": "margin: 1rem 0; width: 100% !important;"}
     )
-
-with feature_cols[2]:
+    
     card(
         title="Course Recommendations",
         text="Get personalized learning resources tailored to your career goals",
-        image="https://cdn-icons-png.flaticon.com/512/1534/1534959.png"
+        image="https://cdn-icons-png.flaticon.com/512/1534/1534959.png",
+        styles={"card": "margin: 1rem 0; width: 100% !important;"}
     )
 
 # ========== Prediction Section ========== #
 st.divider()
 
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    analyze_button = st.button("🌟 Analyze My Career Potential", use_container_width=True)
-
-if analyze_button:
+if st.button("🌟 Analyze My Career Potential", use_container_width=True):
     with st.spinner("Crunching data and mapping opportunities..."):
         try:
             # ======= CRITICAL UPDATE 3: Use encoder-defined order ======= #
@@ -237,6 +263,10 @@ if analyze_button:
                         margin: 2rem 0;
                         box-shadow: 0 4px 15px rgba(0,0,0,0.1);
                     }
+                    @media (max-width: 768px) {
+                        padding: 1rem !important;
+                        margin: 1rem 0 !important;
+                    }
                 """,
             ):
                 col1, col2 = st.columns([2, 1])
@@ -258,8 +288,6 @@ if analyze_button:
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
-                
-                # ... (rest of your existing results display code) ...
 
         except Exception as e:
             st.error(f"Prediction error: {str(e)}")
@@ -267,16 +295,16 @@ if analyze_button:
                 st.write("Encoder features:", st.session_state.encoder_features)
                 st.write("UI categories:", sum(categories.values(), []))
 
-# ========== Footer ========== #
+# ========== Mobile-Optimized Footer ========== #
 st.divider()
 st.markdown("""
-<div style="text-align: center; color: #666; padding: 2rem 0;">
-    <p>© 2024 CareerPath Pro | 📧 support@careerpath.com | 🔒 Data Privacy Guaranteed</p>
-    <div style="display: flex; justify-content: center; gap: 1rem;">
-        <a href="#about" style="color: #666; text-decoration: none;">About</a>
-        <a href="#methodology" style="color: #666; text-decoration: none;">Methodology</a>
-        <a href="#careers" style="color: #666; text-decoration: none;">Career Database</a>
-        <a href="#privacy" style="color: #666; text-decoration: none;">Privacy Policy</a>
+<div style="text-align: center; color: #666; padding: 1rem 0;">
+    <p style="font-size: 0.9rem;">© 2024 CareerPath Pro | 📧 support@careerpath.com</p>
+    <div style="display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap;">
+        <a href="#about" style="color: #666; text-decoration: none; font-size: 0.8rem;">About</a>
+        <a href="#methodology" style="color: #666; text-decoration: none; font-size: 0.8rem;">Methodology</a>
+        <a href="#careers" style="color: #666; text-decoration: none; font-size: 0.8rem;">Careers</a>
+        <a href="#privacy" style="color: #666; text-decoration: none; font-size: 0.8rem;">Privacy</a>
     </div>
 </div>
 """, unsafe_allow_html=True)
