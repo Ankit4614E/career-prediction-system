@@ -7,7 +7,7 @@ from sklearn.preprocessing import OrdinalEncoder, LabelEncoder
 from sklearn.metrics import accuracy_score
 
 # 1. Load and Prepare Data
-def load_data(file_path='E:\Destiny\dataset9000.csv'):
+def load_data(file_path='dataset9000.csv'):
     df = pd.read_csv(file_path)
     
     # Define skills and their order (must match Streamlit app)
@@ -19,9 +19,9 @@ def load_data(file_path='E:\Destiny\dataset9000.csv'):
         "Data Science", "Troubleshooting skills", "Graphics Designing"
     ]
     
-    # Define ordinal categories for skill levels
+    # Updated ordinal categories with 'Excellent'
     skill_levels = ["Not Interested", "Poor", "Beginner", 
-                   "Average", "Intermediate", "Professional"]
+                   "Average", "Intermediate", "Excellent", "Professional"]
     
     return df, skills, skill_levels
 
@@ -29,7 +29,7 @@ def load_data(file_path='E:\Destiny\dataset9000.csv'):
 def preprocess_data(df, skills, skill_levels):
     # Separate features and target
     X = df[skills]
-    y = df['Career']  # Target column name
+    y = df['Role']
     
     # Create and fit encoders
     feature_encoder = OrdinalEncoder(
@@ -49,16 +49,23 @@ def preprocess_data(df, skills, skill_levels):
 def train_model(X, y):
     # Split data
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
+        X, y, test_size=0.2, random_state=42, stratify=y
     )
     
     # Initialize and train model
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model = RandomForestClassifier(
+        n_estimators=200,
+        max_depth=10,
+        min_samples_split=5,
+        class_weight='balanced',
+        random_state=42
+    )
     model.fit(X_train, y_train)
     
     # Evaluate
     y_pred = model.predict(X_test)
     print(f"Model Accuracy: {accuracy_score(y_test, y_pred):.2f}")
+    print("Class distribution:", dict(pd.Series(y).value_counts()))
     
     return model
 
@@ -71,26 +78,13 @@ def save_artifacts(model, feature_encoder, label_encoder):
 
 # Main execution
 if __name__ == '__main__':
-    # Load data
-    df, skills, skill_levels = load_data()
-    
-    # Preprocess
-    X, y, feature_encoder, label_encoder = preprocess_data(df, skills, skill_levels)
-    
-    # Train model
-    model = train_model(X, y)
-    
-    # Save artifacts
-    save_artifacts(model, feature_encoder, label_encoder)
-
-    # Add these print statements
-if __name__ == '__main__':
     print("=== Starting training process ===")
     
     # Load data
     print("Loading data...")
     df, skills, skill_levels = load_data()
     print(f"Loaded {len(df)} records")
+    print(f"Unique roles: {df['Role'].unique()}")
     
     # Preprocess
     print("Preprocessing data...")
