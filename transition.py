@@ -40,7 +40,7 @@ st.markdown("""
 st.markdown("""
 <script>
     setTimeout(function() {
-        window.location.href = "/testing";
+        window.location.href = "testing.py";
     }, 3000);
 </script>
 """, unsafe_allow_html=True)
