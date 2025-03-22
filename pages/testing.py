@@ -40,7 +40,7 @@ if error:
     st.error("Please ensure all model files are in the correct location.")
     st.stop()
 
-# Define skills list
+# Define expanded skills list including the missing features from the error message
 categories = {
     "Core Technical": [
         "Database Fundamentals", "Computer Architecture",
@@ -48,21 +48,26 @@ categories = {
     ],
     "Development": [
         "Software Development", "Programming Skills",
-        "Software Engineering", "AI ML"
+        "Software Engineering", "AI ML", "Data Science"
     ],
     "Security": [
-        "Cyber Security", "Computer Forensics Fundamentals"
+        "Cyber Security", "Computer Forensics Fundamentals", "Troubleshooting skills"
     ],
-    "Professional Skills": [
+    "Creative & Professional": [
         "Project Management", "Technical Communication",
-        "Business Analysis", "Communication skills"
+        "Business Analysis", "Communication skills", "Graphics Designing"
     ]
 }
 
-# Create a flat list of all skills for model input
+# Create a flat list of all skills for model input that matches the training data
 all_skills = []
 for category, skills in categories.items():
     all_skills.extend(skills)
+
+# Display a diagnostic info expander for development purposes
+with st.expander("Debug Info", expanded=False):
+    st.write("All skills being passed to the model:")
+    st.write(all_skills)
 
 # Custom CSS
 st.markdown("""
@@ -208,6 +213,11 @@ if analyze_button:
             # Prepare input data in the correct order for the model
             input_data = [user_inputs[skill] for skill in all_skills]
             
+            # Log the user inputs to help with debugging
+            with st.expander("Input Data Review (for debugging)", expanded=False):
+                df_input = pd.DataFrame([input_data], columns=all_skills)
+                st.dataframe(df_input)
+            
             # Transform and predict
             encoded_input = resources["feature_encoder"].transform(pd.DataFrame([input_data], columns=all_skills))
             prediction = resources["model"].predict(encoded_input)
@@ -259,9 +269,9 @@ if analyze_button:
                 # Calculate simulated skill alignment scores based on user inputs
                 skill_categories = {
                     "Core Technical": ["Database Fundamentals", "Computer Architecture", "Distributed Computing Systems", "Networking"],
-                    "Development": ["Software Development", "Programming Skills", "Software Engineering", "AI ML"],
-                    "Security": ["Cyber Security", "Computer Forensics Fundamentals"],
-                    "Professional": ["Project Management", "Technical Communication", "Business Analysis", "Communication skills"]
+                    "Development": ["Software Development", "Programming Skills", "Software Engineering", "AI ML", "Data Science"],
+                    "Security": ["Cyber Security", "Computer Forensics Fundamentals", "Troubleshooting skills"],
+                    "Creative & Professional": ["Project Management", "Technical Communication", "Business Analysis", "Communication skills", "Graphics Designing"]
                 }
                 
                 def calculate_category_score(category_skills):
@@ -328,7 +338,20 @@ if analyze_button:
         except Exception as e:
             st.error(f"Prediction error: {str(e)}")
             st.error("Please check that your model and encoders match the expected input format.")
-            st.info("If you're testing the application, ensure all required model files are available.")
+            
+            with st.expander("Troubleshooting Information", expanded=True):
+                st.write("The error might be related to feature names. Here's what we're trying to use:")
+                st.write(all_skills)
+                st.write("If these don't match your training data, edit the categories dictionary to match exactly what was used during model training.")
+                st.code("""
+# Example of how to extract feature names from your encoder
+if 'feature_encoder' in resources:
+    try:
+        feature_names = resources['feature_encoder'].get_feature_names_out()
+        print("Feature names from encoder:", feature_names)
+    except:
+        print("Could not extract feature names from encoder")
+                """)
 
 # ========== Footer ========== #
 st.divider()
