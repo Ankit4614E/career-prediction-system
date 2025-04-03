@@ -98,3 +98,15 @@ if __name__ == '__main__':
     print("Saving artifacts...")
     save_artifacts(model, feature_encoder, label_encoder)
     print("=== Training completed successfully ===")
+
+import streamlit as st
+from supabase import create_client
+
+client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+
+try:
+    data = client.table('courses').select("*").execute()
+    st.write("Connection successful! Found courses:")
+    st.write(data.data)
+except Exception as e:
+    st.error(f"Connection failed: {str(e)}")
