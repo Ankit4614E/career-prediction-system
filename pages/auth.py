@@ -3,9 +3,12 @@ import streamlit as st
 from supabase import create_client
 import re
 
-
 # Initialize Supabase client
-supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+def init_supabase():
+    return create_client(
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_KEY"]
+    )
 
 # Session state management
 def init_session():
@@ -16,6 +19,13 @@ def init_session():
             'page': 'login'
         }
 
+# Page configuration
+st.set_page_config(
+    page_title="Career Path Predictor Pro - Auth",
+    page_icon="🔐",
+    layout="wide"
+)
+
 # Authentication UI components
 def show_auth_page():
     init_session()
@@ -23,7 +33,7 @@ def show_auth_page():
     
     # Check if already logged in
     if st.session_state.auth['logged_in']:
-        st.switch_page("testing.py")
+        st.switch_page("pages/career_predictor.py")  # Changed from testing.py to career_predictor.py
     
     # Page styling
     st.markdown("""
@@ -34,20 +44,48 @@ def show_auth_page():
             padding: 2rem;
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            background-color: white;
         }
         .auth-form { margin-bottom: 1.5rem; }
         .toggle-page { text-align: center; margin-top: 1rem; }
+        .stButton>button {
+            background: linear-gradient(45deg, #4B32C3, #876FFD);
+            color: white;
+            border-radius: 8px;
+            padding: 10px 24px;
+            font-weight: bold;
+            width: 100%;
+        }
     </style>
     """, unsafe_allow_html=True)
 
     with st.container():
         st.markdown("<div class='auth-container'>", unsafe_allow_html=True)
         
+        # Logo and title
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            st.image("https://cdn-icons-png.flaticon.com/512/1055/1055666.png", width=60)
+        with col2:
+            st.markdown("## Career Path Predictor Pro")
+        
+        st.markdown("<hr>", unsafe_allow_html=True)
+        
         # Page toggle
         if st.session_state.auth['page'] == 'login':
             show_login_form(supabase)
+            
+            # Toggle button to registration
+            if st.button("Don't have an account? Register here"):
+                st.session_state.auth['page'] = 'register'
+                st.rerun()
         else:
             show_register_form(supabase)
+            
+            # Toggle button to login
+            if st.button("Already have an account? Sign in here"):
+                st.session_state.auth['page'] = 'login'
+                st.rerun()
             
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -60,14 +98,6 @@ def show_login_form(supabase):
         
         if submit:
             handle_login(supabase, email, password)
-            
-    st.markdown(
-        "<div class='toggle-page'>"
-        "Don't have an account? "
-        "<a href='#' onclick='window.streamlit.setComponentValue(\"register\")'>Register here</a>"
-        "</div>", 
-        unsafe_allow_html=True
-    )
 
 def show_register_form(supabase):
     st.header("Create Account 🚀")
@@ -80,58 +110,72 @@ def show_register_form(supabase):
         if submit:
             if validate_registration(email, password, confirm_password):
                 handle_registration(supabase, email, password)
-            
-    st.markdown(
-        "<div class='toggle-page'>"
-        "Already have an account? "
-        "<a href='#' onclick='window.streamlit.setComponentValue(\"login\")'>Sign in here</a>"
-        "</div>", 
-        unsafe_allow_html=True
-    )
 
 # Authentication handlers
 def handle_login(supabase, email, password):
     try:
-        user = supabase.auth.sign_in_with_password({
+        if not email or not password:
+            st.error("Please enter both email and password")
+            return
+            
+        response = supabase.auth.sign_in_with_password({
             "email": email,
             "password": password
         })
         
         st.session_state.auth.update({
-            'user': user.user,
+            'user': response.user,
             'logged_in': True
         })
-        st.rerun()
+        st.success("Successfully logged in!")
+        
+        # Navigate to career_predictor.py
+        st.switch_page("pages/career_predictor.py")
         
     except Exception as e:
-        st.error("Invalid credentials or user not found")
+        st.error(f"Login failed: {str(e)}")
 
 def handle_registration(supabase, email, password):
     try:
-        user = supabase.auth.sign_up({
+        if not email or not password:
+            st.error("Please enter both email and password")
+            return
+            
+        response = supabase.auth.sign_up({
             "email": email,
             "password": password
         })
         
-        # Create user profile in public table
-        supabase.table('users').insert({
-            "id": user.user.id,
-            "email": email,
-            "created_at": user.user.created_at
-        }).execute()
+        # Create user profile in public table if not exists
+        if response.user:
+            try:
+                # Check if user already has an entry
+                supabase.table('users').insert({
+                    "id": response.user.id,
+                    "email": email,
+                    "created_at": response.user.created_at
+                }).execute()
+            except Exception as db_error:
+                st.warning(f"User profile creation note: {str(db_error)}")
         
         st.session_state.auth.update({
-            'user': user.user,
+            'user': response.user,
             'logged_in': True
         })
         st.success("Account created successfully!")
-        st.rerun()
+        
+        # Navigate to career_predictor.py
+        st.switch_page("pages/career_predictor.py")
         
     except Exception as e:
         st.error(f"Registration failed: {str(e)}")
 
 # Validation functions
 def validate_registration(email, password, confirm_password):
+    if not email:
+        st.error("Please enter an email address")
+        return False
+        
     if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
         st.error("Please enter a valid email address")
         return False
@@ -146,24 +190,14 @@ def validate_registration(email, password, confirm_password):
         
     return True
 
-# Logout handler
+# Logout handler (for use in other pages)
 def logout():
-    supabase = init_supabase()
-    supabase.auth.sign_out()
-    st.session_state.auth = {
-        'user': None,
-        'logged_in': False,
-        'page': 'login'
-    }
-    show_auth_page()
-    def show_auth_page():
-    if "auth" not in st.session_state:
+    if 'auth' in st.session_state:
         st.session_state.auth = {
-            "user": None,
-            "logged_in": False,
-            "page": "login"
+            'user': None,
+            'logged_in': False,
+            'page': 'login'
         }
-    if authentication_successful:
-    st.switch_page("testing")
 
-    st.rerun()
+# Run the authentication page
+show_auth_page()
