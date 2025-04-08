@@ -1,3 +1,6 @@
+import os
+from supabase import create_client, Client
+from datetime import datetime
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -5,6 +8,16 @@ import joblib
 from streamlit_extras.colored_header import colored_header
 from streamlit_extras.card import card
 from streamlit_extras.stylable_container import stylable_container
+from auth import logout
+
+# Check authentication state
+if 'auth' not in st.session_state or not st.session_state.auth['logged_in']:
+    st.switch_page("pages/auth.py")
+
+# Add logout button
+with st.sidebar:
+    if st.button("Logout"):
+        logout()
 
 # Page configuration
 st.set_page_config(
@@ -166,7 +179,7 @@ with st.expander("🔍 Step 1: Rate Your Skills", expanded=True):
                         background-color: #fafafa;
                     }
                     :hover {
-                        background-color: #bbbbbd;
+                        background-color: #f0f2f6;
                     }
                 """,
             ):
@@ -204,6 +217,10 @@ with feature_cols[2]:
     )
 
 # ========== Prediction Section ========== #
+if 'user_id' not in st.session_state:
+    st.session_state.user_id = st.session_state.auth['user'].id
+    st.session_state.user_email = st.session_state.auth['user'].email
+    
 st.divider()
 
 col1, col2, col3 = st.columns([1, 2, 1])

@@ -1,3 +1,4 @@
+# transition.py
 import streamlit as st
 import time
 
@@ -36,8 +37,11 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Delay for transition
-time.sleep(3)
-
-# Navigate to testing.py
-st.switch_page("auth.py")  # Ensure 'testing.py' is inside 'pages' directory
+# Add a script to automatically redirect after 3 seconds
+st.markdown("""
+<script>
+setTimeout(function() {
+    window.location.href = "http://localhost:8501/pages/auth.py";
+}, 3000);
+</script>
+""", unsafe_allow_html=True)
