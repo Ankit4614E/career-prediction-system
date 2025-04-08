@@ -40,4 +40,4 @@ st.markdown("""
 time.sleep(3)
 
 # Navigate to testing.py
-st.switch_page("pages/testing.py")  # Ensure 'testing.py' is inside 'pages' directory
+st.switch_page("auth.py")  # Ensure 'testing.py' is inside 'pages' directory
