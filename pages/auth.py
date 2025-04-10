@@ -102,14 +102,15 @@ def show_login_form(supabase):
 def show_register_form(supabase):
     st.header("Create Account 🚀")
     with st.form("Register Form"):
+        name = st.text_input("Full Name")  # Added field
         email = st.text_input("Email Address")
         password = st.text_input("Create Password", type="password")
         confirm_password = st.text_input("Confirm Password", type="password")
         submit = st.form_submit_button("Create Account")
         
         if submit:
-            if validate_registration(email, password, confirm_password):
-                handle_registration(supabase, email, password)
+            if validate_registration(name, email, password, confirm_password):
+                handle_registration(supabase, name, email, password)
 
 # Authentication handlers
 def handle_login(supabase, email, password):
@@ -135,7 +136,7 @@ def handle_login(supabase, email, password):
     except Exception as e:
         st.error(f"Login failed: {str(e)}")
 
-def handle_registration(supabase, email, password):
+def handle_registration(supabase, name, email, password):
     try:
         if not email or not password:
             st.error("Please enter both email and password")
@@ -146,13 +147,13 @@ def handle_registration(supabase, email, password):
             "password": password
         })
         
-        # Create user profile in public table if not exists
         if response.user:
             try:
-                # Check if user already has an entry
+                # Insert name into user profile
                 supabase.table('users').insert({
                     "id": response.user.id,
                     "email": email,
+                    "name": name,  # Added name field
                     "created_at": response.user.created_at
                 }).execute()
             except Exception as db_error:
@@ -170,8 +171,12 @@ def handle_registration(supabase, email, password):
     except Exception as e:
         st.error(f"Registration failed: {str(e)}")
 
-# Validation functions
-def validate_registration(email, password, confirm_password):
+
+def validate_registration(name, email, password, confirm_password):
+    if not name:
+        st.error("Please enter your full name")
+        return False
+        
     if not email:
         st.error("Please enter an email address")
         return False

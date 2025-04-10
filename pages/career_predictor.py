@@ -5,19 +5,23 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
+import json
 from streamlit_extras.colored_header import colored_header
 from streamlit_extras.card import card
 from streamlit_extras.stylable_container import stylable_container
-from auth import logout
 
-# Check authentication state
-if 'auth' not in st.session_state or not st.session_state.auth['logged_in']:
-    st.switch_page("pages/auth.py")
+# Initialize Supabase client
+def init_supabase():
+    return create_client(
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_KEY"]
+    )
 
-# Add logout button
-with st.sidebar:
-    if st.button("Logout"):
-        logout()
+# Check authentication status
+def check_auth():
+    if 'auth' not in st.session_state or not st.session_state.auth.get('logged_in', False):
+        st.switch_page("pages/auth.py")
+    return st.session_state.auth.get('user')
 
 # Page configuration
 st.set_page_config(
@@ -51,6 +55,9 @@ if error:
     st.error(error)
     st.error("Please ensure all model files are in the correct location.")
     st.stop()
+
+# Get current user
+current_user = check_auth()
 
 # ======= CRITICAL UPDATE 1: Get feature order from encoder ======= #
 try:
@@ -133,8 +140,156 @@ st.markdown("""
         border-top: 1px solid #ddd;
         text-align: center;
     }
+    .user-profile {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 10px;
+        padding: 10px;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# User profile section in header
+st.markdown(
+    f"""
+    <div class="user-profile">
+        <span>Welcome, {current_user.email}</span>
+        <span>|</span>
+        <a href="#" id="logout-link">Logout</a>
+    </div>
+    """, 
+    unsafe_allow_html=True
+)
+
+# Logout handling with JavaScript
+st.markdown(
+    """
+    <script>
+    document.getElementById('logout-link').addEventListener('click', function(e) {
+        e.preventDefault();
+        window.parent.postMessage({type: 'streamlit:setComponentValue', value: 'logout'}, '*');
+    });
+    </script>
+    """,
+    unsafe_allow_html=True
+)
+
+# Handle logout action from JS
+if st.session_state.get('componentValue') == 'logout':
+    from pages.auth import logout
+    logout()
+    st.rerun()
+
+# Function to retrieve user's saved skills from database
+@st.cache_data(ttl=60)
+def get_user_skills(user_id):
+    try:
+        supabase = init_supabase()
+        response = supabase.table('skill_levels').select('*').eq('user_id', user_id).execute()
+        if response.data:
+            # Convert to dictionary mapping skill_name to level
+            skills_dict = {item['skill_name']: item['level'] for item in response.data}
+            return skills_dict
+        return {}
+    except Exception as e:
+        st.error(f"Error retrieving skills: {str(e)}")
+        return {}
+
+# Function to retrieve user's previous analyses
+@st.cache_data(ttl=60)
+def get_user_analyses(user_id):
+    try:
+        supabase = init_supabase()
+        response = supabase.table('career_analyses').select('*').eq('user_id', user_id).order('created_at', desc=True).limit(5).execute()
+        return response.data
+    except Exception as e:
+        st.error(f"Error retrieving analyses: {str(e)}")
+        return []
+
+# Function to get recommended courses
+@st.cache_data(ttl=300)
+def get_recommended_courses(target_role):
+    try:
+        supabase = init_supabase()
+        response = supabase.table('courses').select('*').eq('target_role', target_role).execute()
+        return response.data
+    except Exception as e:
+        st.error(f"Error retrieving courses: {str(e)}")
+        return []
+
+# Function to save skill levels to database
+def save_skill_levels(user_id, skills_data):
+    try:
+        supabase = init_supabase()
+        
+        # Convert skill level from text to numeric (1-7)
+        proficiency_levels = [
+            "Not Interested", "Poor", "Beginner", 
+            "Average", "Intermediate", "Excellent", "Professional"
+        ]
+        
+        # First, delete existing skill records for this user
+        supabase.table('skill_levels').delete().eq('user_id', user_id).execute()
+        
+        # Then insert new records
+        for skill_name, level_text in skills_data.items():
+            level_num = proficiency_levels.index(level_text) + 1  # Convert to 1-7 scale
+            
+            supabase.table('skill_levels').insert({
+                'user_id': user_id,
+                'skill_name': skill_name,
+                'level': level_num
+            }).execute()
+            
+    except Exception as e:
+        st.error(f"Error saving skills: {str(e)}")
+
+# Function to save career analysis
+def save_career_analysis(user_id, predicted_role, confidence_score, skill_gap):
+    try:
+        supabase = init_supabase()
+        supabase.table('career_analyses').insert({
+            'user_id': user_id,
+            'predicted_role': predicted_role,
+            'confidence_score': confidence_score,
+            'skill_gap': json.dumps(skill_gap),
+            'created_at': datetime.now().isoformat()
+        }).execute()
+    except Exception as e:
+        st.error(f"Error saving analysis: {str(e)}")
+
+# Function to save user course enrollment
+def enroll_in_course(user_id, course_id):
+    try:
+        supabase = init_supabase()
+        # Check if already enrolled
+        existing = supabase.table('user_courses').select('*').eq('user_id', user_id).eq('course_id', course_id).execute()
+        
+        if not existing.data:
+            supabase.table('user_courses').insert({
+                'user_id': user_id,
+                'course_id': course_id,
+                'completed': False
+            }).execute()
+            return True
+        return False
+    except Exception as e:
+        st.error(f"Error enrolling in course: {str(e)}")
+        return False
+
+# Get user's previous skills from database
+user_skills = get_user_skills(current_user.id)
+
+# Convert numeric levels back to text labels for display
+def numeric_to_text_level(numeric_level):
+    proficiency_levels = [
+        "Not Interested", "Poor", "Beginner", 
+        "Average", "Intermediate", "Excellent", "Professional"
+    ]
+    if isinstance(numeric_level, int) and 1 <= numeric_level <= 7:
+        return proficiency_levels[numeric_level - 1]
+    return "Average"  # Default
 
 # ========== Hero Section ========== #
 colored_header(
@@ -154,6 +309,46 @@ with st.container():
         
         This tool analyzes your technical skills and proficiency levels to recommend the most suitable career path in the tech industry.
         """)
+
+# ========== Previous Analyses Section ========== #
+previous_analyses = get_user_analyses(current_user.id)
+
+if previous_analyses:
+    st.subheader("⏱️ Your Previous Career Analyses")
+    
+    # Convert datetime strings to more readable format
+    for analysis in previous_analyses:
+        created_at = datetime.fromisoformat(analysis['created_at'].replace('Z', '+00:00'))
+        analysis['formatted_date'] = created_at.strftime("%b %d, %Y at %I:%M %p")
+    
+    analyses_cols = st.columns(min(len(previous_analyses), 3))
+    for i, col in enumerate(analyses_cols):
+        if i < len(previous_analyses):
+            analysis = previous_analyses[i]
+            with col:
+                with stylable_container(
+                    key=f"analysis_{i}",
+                    css_styles="""
+                        {
+                            border: 1px solid rgba(49, 51, 63, 0.2);
+                            border-radius: 0.5rem;
+                            padding: 1rem;
+                            background-color: #fafafa;
+                        }
+                    """,
+                ):
+                    st.markdown(f"### {analysis['predicted_role']}")
+                    st.markdown(f"**Match Score:** {analysis['confidence_score']:.0%}")
+                    st.markdown(f"*{analysis['formatted_date']}*")
+                    
+                    if 'skill_gap' in analysis and analysis['skill_gap']:
+                        with st.expander("Skill Gaps"):
+                            try:
+                                skill_gaps = json.loads(analysis['skill_gap'])
+                                for skill, gap in skill_gaps.items():
+                                    st.markdown(f"- **{skill}:** {gap}")
+                            except:
+                                st.markdown("Skill gap information not available")
 
 # ========== Skill Input Section ========== #
 with st.expander("🔍 Step 1: Rate Your Skills", expanded=True):
@@ -183,10 +378,16 @@ with st.expander("🔍 Step 1: Rate Your Skills", expanded=True):
                     }
                 """,
             ):
+                # Use previous value from database if available, otherwise default to "Average"
+                default_level = "Average"
+                if skill in user_skills:
+                    default_level = numeric_to_text_level(user_skills[skill])
+                
+                default_index = proficiency_levels.index(default_level)
                 user_inputs[skill] = st.selectbox(
                     f"{skill} Level",
                     proficiency_levels,
-                    index=3,
+                    index=default_index,
                     key=skill
                 )
 
@@ -217,10 +418,6 @@ with feature_cols[2]:
     )
 
 # ========== Prediction Section ========== #
-if 'user_id' not in st.session_state:
-    st.session_state.user_id = st.session_state.auth['user'].id
-    st.session_state.user_email = st.session_state.auth['user'].email
-    
 st.divider()
 
 col1, col2, col3 = st.columns([1, 2, 1])
@@ -230,6 +427,9 @@ with col2:
 if analyze_button:
     with st.spinner("Crunching data and mapping opportunities..."):
         try:
+            # Save skill levels to database
+            save_skill_levels(current_user.id, user_inputs)
+            
             # ======= CRITICAL UPDATE 3: Use encoder-defined order ======= #
             input_data = [user_inputs[skill] for skill in st.session_state.encoder_features]
             
@@ -242,7 +442,25 @@ if analyze_button:
             predicted_career = resources["label_encoder"].inverse_transform(prediction)[0]
             
             confidence_score = np.random.uniform(0.75, 0.95)
+            
+            # Generate skill gap analysis (simulated)
+            skill_gap = {}
+            for skill, level in user_inputs.items():
+                if proficiency_levels.index(level) < 5:  # If below "Excellent"
+                    if np.random.random() < 0.3:  # Only show some skills as gaps
+                        skill_gap[skill] = f"Consider improving from {level} to {proficiency_levels[proficiency_levels.index(level) + 1]}"
+            
+            # Save analysis to database
+            save_career_analysis(current_user.id, predicted_career, confidence_score, skill_gap)
+            
+            # Get course recommendations
+            recommended_courses = get_recommended_courses(predicted_career)
+            
             st.balloons()
+            
+            # Clear cache to refresh data
+            get_user_analyses.clear()
+            get_user_skills.clear()
             
             with stylable_container(
                 key="result_container",
@@ -276,7 +494,35 @@ if analyze_button:
                     </div>
                     """, unsafe_allow_html=True)
                 
-                # ... (rest of your existing results display code) ...
+                # Skill gap analysis
+                if skill_gap:
+                    st.markdown("### 🧠 Skill Gap Analysis")
+                    st.markdown("To excel in this career path, consider improving these skills:")
+                    
+                    gap_cols = st.columns(min(3, len(skill_gap)))
+                    for i, (skill, gap) in enumerate(skill_gap.items()):
+                        with gap_cols[i % 3]:
+                            st.markdown(f"**{skill}**")
+                            st.markdown(f"_{gap}_")
+                
+                # Course recommendations
+                if recommended_courses:
+                    st.markdown("### 📚 Recommended Courses")
+                    
+                    for i, course in enumerate(recommended_courses):
+                        with st.container():
+                            cols = st.columns([3, 1])
+                            with cols[0]:
+                                st.markdown(f"**{course['name']}**")
+                                st.markdown(f"{course['description'] if course['description'] else 'Learn key skills for this role'}")
+                            with cols[1]:
+                                if st.button("Enroll", key=f"enroll_{i}"):
+                                    if enroll_in_course(current_user.id, course['id']):
+                                        st.success("Successfully enrolled!")
+                                    else:
+                                        st.info("You're already enrolled in this course")
+                else:
+                    st.info("No specific courses found for this career path. We're continually adding new resources.")
 
         except Exception as e:
             st.error(f"Prediction error: {str(e)}")

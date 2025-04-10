@@ -5,9 +5,12 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import OrdinalEncoder, LabelEncoder
 from sklearn.metrics import accuracy_score
+import streamlit as st
+from supabase import create_client
+
 
 # 1. Load and Prepare Data
-def load_data(file_path='dataset9000.csv'):
+def load_data(file_path='finalized_dataset.csv'):
     df = pd.read_csv(file_path)
     
     # Define skills and their order (must match Streamlit app)
@@ -98,9 +101,6 @@ if __name__ == '__main__':
     print("Saving artifacts...")
     save_artifacts(model, feature_encoder, label_encoder)
     print("=== Training completed successfully ===")
-
-import streamlit as st
-from supabase import create_client
 
 client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
