@@ -1,4 +1,5 @@
 # auth.py
+from datetime import datetime
 import streamlit as st
 from supabase import create_client
 import re
@@ -33,7 +34,7 @@ def show_auth_page():
     
     # Check if already logged in
     if st.session_state.auth['logged_in']:
-        st.switch_page("pages/career_predictor.py")  # Changed from testing.py to career_predictor.py
+        st.switch_page("pages/career_predictor.py")
     
     # Page styling
     st.markdown("""
@@ -102,77 +103,132 @@ def show_login_form(supabase):
 def show_register_form(supabase):
     st.header("Create Account 🚀")
     with st.form("Register Form"):
-        name = st.text_input("Full Name")  # Added field
+        name = st.text_input("Full Name")
         email = st.text_input("Email Address")
+        
+        # New fields for age and designation
+        age = st.number_input("Age", min_value=13, max_value=100, value=25)
+        designation_options = [
+            "Student", 
+            "Professional", 
+            "Recent Graduate", 
+            "Career Changer", 
+            "Entrepreneur", 
+            "Other"
+        ]
+        designation = st.selectbox("Current Designation", designation_options)
+        
         password = st.text_input("Create Password", type="password")
         confirm_password = st.text_input("Confirm Password", type="password")
         submit = st.form_submit_button("Create Account")
         
         if submit:
-            if validate_registration(name, email, password, confirm_password):
-                handle_registration(supabase, name, email, password)
+            if validate_registration(name, email, age, designation, password, confirm_password):
+                handle_registration(supabase, name, email, age, designation, password)
 
 # Authentication handlers
+# Replace the existing handle_login function with:
 def handle_login(supabase, email, password):
     try:
         if not email or not password:
             st.error("Please enter both email and password")
             return
-            
+
         response = supabase.auth.sign_in_with_password({
             "email": email,
             "password": password
         })
-        
+
+        # Fetch additional user data with authenticated session
+        user_data = supabase.table('users').select('*').eq('id', response.user.id).execute()
+        user_profile = user_data.data[0] if user_data.data else {}
+
+        # Create a session user object (do NOT attach tokens to response.user)
+        session_user = {
+            "id": response.user.id,
+            "email": response.user.email,
+            "name": user_profile.get('name', ''),
+            "age": user_profile.get('age', 0),
+            "designation": user_profile.get('designation', ''),
+            "access_token": response.session.access_token,
+            "refresh_token": response.session.refresh_token
+        }
+
         st.session_state.auth.update({
-            'user': response.user,
+            'user': session_user,
             'logged_in': True
         })
         st.success("Successfully logged in!")
-        
-        # Navigate to career_predictor.py
         st.switch_page("pages/career_predictor.py")
-        
+
     except Exception as e:
         st.error(f"Login failed: {str(e)}")
 
-def handle_registration(supabase, name, email, password):
+def handle_registration(supabase, name, email, age, designation, password):
+    from datetime import datetime
+
     try:
-        if not email or not password:
-            st.error("Please enter both email and password")
-            return
-            
+        # Step 1: Sign up the user
         response = supabase.auth.sign_up({
             "email": email,
             "password": password
         })
-        
-        if response.user:
+
+        # Step 2: Check if signup was successful
+        if response.user and response.session:
+            supabase.auth.set_session(
+                response.session.access_token,
+                response.session.refresh_token
+            )
+
+            created_at = getattr(response.user, 'created_at', datetime.now()).isoformat()
+
+            # Step 3: Insert metadata into 'users' table
+            user_data = {
+                "id": response.user.id,
+                "email": email,
+                "name": name,
+                "age": age,
+                "designation": designation,
+                "created_at": created_at
+            }
+
+            # Insert user data and handle any exceptions
             try:
-                # Insert name into user profile
-                supabase.table('users').insert({
-                    "id": response.user.id,
-                    "email": email,
-                    "name": name,  # Added name field
-                    "created_at": response.user.created_at
-                }).execute()
-            except Exception as db_error:
-                st.warning(f"User profile creation note: {str(db_error)}")
-        
-        st.session_state.auth.update({
-            'user': response.user,
-            'logged_in': True
-        })
-        st.success("Account created successfully!")
-        
-        # Navigate to career_predictor.py
-        st.switch_page("pages/career_predictor.py")
-        
+                insert_result = supabase.table('users').insert(user_data).execute()
+                # No need to check for error attribute, if there's an issue it will raise an exception
+            except Exception as insert_error:
+                st.error("Failed to store user details in the database.")
+                st.error(f"Insert error: {str(insert_error)}")
+                return
+
+            # Create a session user object
+            session_user = {
+                "id": response.user.id,
+                "email": email,
+                "name": name,
+                "age": age,
+                "designation": designation,
+                "access_token": response.session.access_token,
+                "refresh_token": response.session.refresh_token
+            }
+
+            st.session_state.auth.update({
+                'user': session_user,
+                'logged_in': True
+            })
+
+            st.success("Account created successfully!")
+            st.switch_page("pages/career_predictor.py")
+
+        else:
+            st.success("Check your email to confirm registration before logging in.")
+
     except Exception as e:
-        st.error(f"Registration failed: {str(e)}")
+        st.error("Registration failed due to an unexpected error.")
+        st.error(f"{type(e).__name__}: {str(e)}")
 
-
-def validate_registration(name, email, password, confirm_password):
+def validate_registration(name, email, age, designation, password, confirm_password):
     if not name:
         st.error("Please enter your full name")
         return False
@@ -183,6 +239,10 @@ def validate_registration(name, email, password, confirm_password):
         
     if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
         st.error("Please enter a valid email address")
+        return False
+    
+    if age < 13:
+        st.error("You must be at least 13 years old to register")
         return False
         
     if len(password) < 8:

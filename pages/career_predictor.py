@@ -10,12 +10,39 @@ from streamlit_extras.colored_header import colored_header
 from streamlit_extras.card import card
 from streamlit_extras.stylable_container import stylable_container
 
-# Initialize Supabase client
+# Add this helper function at the top of your career_predictor.py file
+def get_user_attribute(user_obj, attribute, default_value=None):
+    """
+    Safely get an attribute from a user object regardless of whether it's a dict or object
+    
+    Args:
+        user_obj: The user object or dictionary
+        attribute: The attribute/key to retrieve
+        default_value: Default value if attribute doesn't exist
+        
+    Returns:
+        The attribute value or default_value if not found
+    """
+    if isinstance(user_obj, dict):
+        return user_obj.get(attribute, default_value)
+    else:
+        return getattr(user_obj, attribute, default_value)
+
 def init_supabase():
-    return create_client(
-        st.secrets["SUPABASE_URL"],
-        st.secrets["SUPABASE_KEY"]
-    )
+    supabase_url = st.secrets["SUPABASE_URL"]
+    supabase_key = st.secrets["SUPABASE_KEY"]
+    
+    # Create the client without authentication first
+    client = create_client(supabase_url, supabase_key)
+    
+    # If there's an authenticated user in session_state, use their session
+    if 'auth' in st.session_state and st.session_state.auth.get('logged_in', False):
+        user = st.session_state.auth.get('user')
+        if hasattr(user, 'access_token'):
+            # Update client with user's session
+            client.auth.set_session(user.access_token)
+    
+    return client
 
 # Check authentication status
 def check_auth():
@@ -147,14 +174,29 @@ st.markdown("""
         gap: 10px;
         padding: 10px;
     }
+    .user-profile a {
+        color: #4B32C3;
+        text-decoration: none;
+        font-weight: bold;
+    }
+    .user-profile a:hover {
+        text-decoration: underline;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# User profile section in header
+# Function to navigate to user profile page
+def go_to_profile():
+    st.session_state['show_profile'] = True
+    st.switch_page("pages/user_profile.py")
+
+user_name = get_user_attribute(current_user, 'name', 
+            get_user_attribute(current_user, 'email', 'User'))
+
 st.markdown(
     f"""
     <div class="user-profile">
-        <span>Welcome, {current_user.email}</span>
+        <span>Welcome, <a href="#" id="profile-link">{user_name}</a></span>
         <span>|</span>
         <a href="#" id="logout-link">Logout</a>
     </div>
@@ -162,7 +204,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Logout handling with JavaScript
+# JavaScript for handling profile click and logout
 st.markdown(
     """
     <script>
@@ -170,16 +212,49 @@ st.markdown(
         e.preventDefault();
         window.parent.postMessage({type: 'streamlit:setComponentValue', value: 'logout'}, '*');
     });
+    
+    document.getElementById('profile-link').addEventListener('click', function(e) {
+        e.preventDefault();
+        window.parent.postMessage({type: 'streamlit:setComponentValue', value: 'profile'}, '*');
+    });
     </script>
     """,
     unsafe_allow_html=True
 )
 
-# Handle logout action from JS
+# Handle component values from JS
 if st.session_state.get('componentValue') == 'logout':
     from pages.auth import logout
     logout()
     st.rerun()
+elif st.session_state.get('componentValue') == 'profile':
+    st.session_state['componentValue'] = None  # Reset the value
+    go_to_profile()
+
+# Function to ensure user exists in the users table
+def ensure_user_exists(user_id):
+    if not user_id:
+        st.error("Invalid user ID. Please log in again.")
+        from pages.auth import logout
+        logout()
+        st.rerun()
+        
+    try:
+        supabase = init_supabase()
+        # Check if user exists
+        response = supabase.table('users').select('id').eq('id', user_id).execute()
+        
+        # If user doesn't exist, create them
+        if not response.data:
+            supabase.table('users').insert({
+                'id': user_id,
+                'created_at': datetime.now().isoformat()
+            }).execute()
+    except Exception as e:
+        st.error(f"Error ensuring user exists: {str(e)}")
+
+# Ensure current user exists in database
+ensure_user_exists(get_user_attribute(current_user, 'id'))
 
 # Function to retrieve user's saved skills from database
 @st.cache_data(ttl=60)
@@ -201,7 +276,7 @@ def get_user_skills(user_id):
 def get_user_analyses(user_id):
     try:
         supabase = init_supabase()
-        response = supabase.table('career_analyses').select('*').eq('user_id', user_id).order('created_at', desc=True).limit(5).execute()
+        response = supabase.table('career_analyses').select('*').eq('user_id', user_id).order('analyzed_at', desc=True).limit(5).execute()
         return response.data
     except Exception as e:
         st.error(f"Error retrieving analyses: {str(e)}")
@@ -212,7 +287,7 @@ def get_user_analyses(user_id):
 def get_recommended_courses(target_role):
     try:
         supabase = init_supabase()
-        response = supabase.table('courses').select('*').eq('target_role', target_role).execute()
+        response = supabase.table('courses').select('*').eq('role_target', target_role).execute()
         return response.data
     except Exception as e:
         st.error(f"Error retrieving courses: {str(e)}")
@@ -234,7 +309,7 @@ def save_skill_levels(user_id, skills_data):
         
         # Then insert new records
         for skill_name, level_text in skills_data.items():
-            level_num = proficiency_levels.index(level_text) + 1  # Convert to 1-7 scale
+            level_num = proficiency_levels.index(level_text)  # Convert to 0-6 scale (match CHECK constraint)
             
             supabase.table('skill_levels').insert({
                 'user_id': user_id,
@@ -252,9 +327,9 @@ def save_career_analysis(user_id, predicted_role, confidence_score, skill_gap):
         supabase.table('career_analyses').insert({
             'user_id': user_id,
             'predicted_role': predicted_role,
-            'confidence_score': confidence_score,
+            'confidence': confidence_score,  # Changed from confidence_score to confidence
             'skill_gap': json.dumps(skill_gap),
-            'created_at': datetime.now().isoformat()
+            'analyzed_at': datetime.now().isoformat()  # Changed from created_at to analyzed_at
         }).execute()
     except Exception as e:
         st.error(f"Error saving analysis: {str(e)}")
@@ -270,7 +345,8 @@ def enroll_in_course(user_id, course_id):
             supabase.table('user_courses').insert({
                 'user_id': user_id,
                 'course_id': course_id,
-                'completed': False
+                'completed': False,
+                'started_at': datetime.now().isoformat()  # Changed from implicit default to explicit
             }).execute()
             return True
         return False
@@ -279,7 +355,7 @@ def enroll_in_course(user_id, course_id):
         return False
 
 # Get user's previous skills from database
-user_skills = get_user_skills(current_user.id)
+user_skills = get_user_skills(get_user_attribute(current_user, 'id'))
 
 # Convert numeric levels back to text labels for display
 def numeric_to_text_level(numeric_level):
@@ -287,8 +363,8 @@ def numeric_to_text_level(numeric_level):
         "Not Interested", "Poor", "Beginner", 
         "Average", "Intermediate", "Excellent", "Professional"
     ]
-    if isinstance(numeric_level, int) and 1 <= numeric_level <= 7:
-        return proficiency_levels[numeric_level - 1]
+    if isinstance(numeric_level, int) and 0 <= numeric_level <= 6:
+        return proficiency_levels[numeric_level]  # Changed from numeric_level - 1 to match 0-6 scale
     return "Average"  # Default
 
 # ========== Hero Section ========== #
@@ -311,14 +387,14 @@ with st.container():
         """)
 
 # ========== Previous Analyses Section ========== #
-previous_analyses = get_user_analyses(current_user.id)
+previous_analyses = get_user_analyses(get_user_attribute(current_user, 'id'))
 
 if previous_analyses:
     st.subheader("⏱️ Your Previous Career Analyses")
     
     # Convert datetime strings to more readable format
     for analysis in previous_analyses:
-        created_at = datetime.fromisoformat(analysis['created_at'].replace('Z', '+00:00'))
+        created_at = datetime.fromisoformat(analysis['analyzed_at'].replace('Z', '+00:00'))
         analysis['formatted_date'] = created_at.strftime("%b %d, %Y at %I:%M %p")
     
     analyses_cols = st.columns(min(len(previous_analyses), 3))
@@ -338,7 +414,7 @@ if previous_analyses:
                     """,
                 ):
                     st.markdown(f"### {analysis['predicted_role']}")
-                    st.markdown(f"**Match Score:** {analysis['confidence_score']:.0%}")
+                    st.markdown(f"**Match Score:** {analysis['confidence']:.0%}")  # Changed from confidence_score to confidence
                     st.markdown(f"*{analysis['formatted_date']}*")
                     
                     if 'skill_gap' in analysis and analysis['skill_gap']:
@@ -428,7 +504,7 @@ if analyze_button:
     with st.spinner("Crunching data and mapping opportunities..."):
         try:
             # Save skill levels to database
-            save_skill_levels(current_user.id, user_inputs)
+            save_skill_levels(get_user_attribute(current_user, 'id'), user_inputs)
             
             # ======= CRITICAL UPDATE 3: Use encoder-defined order ======= #
             input_data = [user_inputs[skill] for skill in st.session_state.encoder_features]
@@ -451,7 +527,7 @@ if analyze_button:
                         skill_gap[skill] = f"Consider improving from {level} to {proficiency_levels[proficiency_levels.index(level) + 1]}"
             
             # Save analysis to database
-            save_career_analysis(current_user.id, predicted_career, confidence_score, skill_gap)
+            save_career_analysis(get_user_attribute(current_user, 'id'), predicted_career, confidence_score, skill_gap)
             
             # Get course recommendations
             recommended_courses = get_recommended_courses(predicted_career)
@@ -513,11 +589,11 @@ if analyze_button:
                         with st.container():
                             cols = st.columns([3, 1])
                             with cols[0]:
-                                st.markdown(f"**{course['name']}**")
-                                st.markdown(f"{course['description'] if course['description'] else 'Learn key skills for this role'}")
+                                st.markdown(f"**{course['title']}**")  # Changed from name to title
+                                st.markdown(f"{course['provider']} - {course.get('description', 'Learn key skills for this role')}")
                             with cols[1]:
                                 if st.button("Enroll", key=f"enroll_{i}"):
-                                    if enroll_in_course(current_user.id, course['id']):
+                                    if enroll_in_course(get_user_attribute(current_user, 'id'), course['id']):
                                         st.success("Successfully enrolled!")
                                     else:
                                         st.info("You're already enrolled in this course")
@@ -540,6 +616,14 @@ st.markdown("""
         <a href="#methodology" style="color: #666; text-decoration: none;">Methodology</a>
         <a href="#careers" style="color: #666; text-decoration: none;">Career Database</a>
         <a href="#privacy" style="color: #666; text-decoration: none;">Privacy Policy</a>
+        <a href="#profile" style="color: #666; text-decoration: none;" id="footer-profile">My Profile</a>
     </div>
 </div>
+
+<script>
+document.getElementById('footer-profile').addEventListener('click', function(e) {
+    e.preventDefault();
+    window.parent.postMessage({type: 'streamlit:setComponentValue', value: 'profile'}, '*');
+});
+</script>
 """, unsafe_allow_html=True)

@@ -10,7 +10,7 @@ from supabase import create_client
 
 
 # 1. Load and Prepare Data
-def load_data(file_path='finalized_dataset.csv'):
+def load_data(file_path='dataset9000.csv'):
     df = pd.read_csv(file_path)
     
     # Define skills and their order (must match Streamlit app)
