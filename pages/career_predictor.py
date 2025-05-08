@@ -10,19 +10,7 @@ from streamlit_extras.colored_header import colored_header
 from streamlit_extras.card import card
 from streamlit_extras.stylable_container import stylable_container
 
-# Add this helper function at the top of your career_predictor.py file
 def get_user_attribute(user_obj, attribute, default_value=None):
-    """
-    Safely get an attribute from a user object regardless of whether it's a dict or object
-    
-    Args:
-        user_obj: The user object or dictionary
-        attribute: The attribute/key to retrieve
-        default_value: Default value if attribute doesn't exist
-        
-    Returns:
-        The attribute value or default_value if not found
-    """
     if isinstance(user_obj, dict):
         return user_obj.get(attribute, default_value)
     else:
@@ -31,38 +19,28 @@ def get_user_attribute(user_obj, attribute, default_value=None):
 def init_supabase():
     supabase_url = st.secrets["SUPABASE_URL"]
     supabase_key = st.secrets["SUPABASE_KEY"]
-    
-    # Create the client without authentication first
     client = create_client(supabase_url, supabase_key)
-    
-    # If there's an authenticated user in session_state, use their session
     if 'auth' in st.session_state and st.session_state.auth.get('logged_in', False):
         user = st.session_state.auth.get('user')
         if hasattr(user, 'access_token'):
-            # Update client with user's session
             client.auth.set_session(user.access_token)
-    
     return client
 
-# Check authentication status
 def check_auth():
     if 'auth' not in st.session_state or not st.session_state.auth.get('logged_in', False):
         st.switch_page("pages/auth.py")
     return st.session_state.auth.get('user')
 
-# Page configuration
 st.set_page_config(
     page_title="Career Path Predictor Pro",
     page_icon="🚀",
     layout="wide"
 )
 
-# Define paths for resources
 MODEL_PATH = "career_model.pkl"
 FEATURE_ENCODER_PATH = "feature_encoder.pkl"
 LABEL_ENCODER_PATH = "label_encoder.pkl"
 
-# Load resources with proper error handling
 @st.cache_resource
 def load_model_resources():
     resources = {}
@@ -76,17 +54,14 @@ def load_model_resources():
     except Exception as e:
         return None, f"Error loading resources: {str(e)}"
 
-# Load resources
 resources, error = load_model_resources()
 if error:
     st.error(error)
     st.error("Please ensure all model files are in the correct location.")
     st.stop()
 
-# Get current user
 current_user = check_auth()
 
-# ======= CRITICAL UPDATE 1: Get feature order from encoder ======= #
 try:
     encoder_features = resources["feature_encoder"].get_feature_names_out().tolist()
     st.session_state.encoder_features = encoder_features
@@ -94,7 +69,6 @@ except Exception as e:
     st.error(f"Failed to get encoder features: {str(e)}")
     st.stop()
 
-# Define UI categories (can be different from encoder order)
 categories = {
     "Core Technical": [
         "Database Fundamentals", "Computer Architecture",
@@ -113,7 +87,6 @@ categories = {
     ]
 }
 
-# ======= CRITICAL UPDATE 2: Validate encoder features ======= #
 missing_features = [f for f in st.session_state.encoder_features if f not in sum(categories.values(), [])]
 extra_features = [f for f in sum(categories.values(), []) if f not in st.session_state.encoder_features]
 
@@ -124,7 +97,6 @@ if missing_features or extra_features:
         st.write("Features in UI but missing in encoder:", extra_features)
     st.stop()
 
-# Custom CSS
 st.markdown("""
 <style>
     .stSelectbox [data-testid='stMarkdownContainer'] {
@@ -185,66 +157,71 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Function to navigate to user profile page
 def go_to_profile():
     st.session_state['show_profile'] = True
     st.switch_page("pages/user_profile.py")
 
-user_name = get_user_attribute(current_user, 'name', 
-            get_user_attribute(current_user, 'email', 'User'))
+user_name = get_user_attribute(current_user, 'name', get_user_attribute(current_user, 'email', 'User'))
 
+# Modified user profile section with proper navigation handling
 st.markdown(
     f"""
     <div class="user-profile">
-        <span>Welcome, <a href="#" id="profile-link">{user_name}</a></span>
+        <span>Welcome, <a href="#" id="profile-link" onclick="handleProfileClick(event)">{user_name}</a></span>
         <span>|</span>
-        <a href="#" id="logout-link">Logout</a>
+        <a href="#" id="logout-link" onclick="handleLogoutClick(event)">Logout</a>
     </div>
     """, 
     unsafe_allow_html=True
 )
 
-# JavaScript for handling profile click and logout
+# Updated JavaScript handling
 st.markdown(
     """
     <script>
-    document.getElementById('logout-link').addEventListener('click', function(e) {
-        e.preventDefault();
-        window.parent.postMessage({type: 'streamlit:setComponentValue', value: 'logout'}, '*');
-    });
-    
-    document.getElementById('profile-link').addEventListener('click', function(e) {
+    function handleProfileClick(e) {
         e.preventDefault();
         window.parent.postMessage({type: 'streamlit:setComponentValue', value: 'profile'}, '*');
+    }
+    
+    function handleLogoutClick(e) {
+        e.preventDefault();
+        window.parent.postMessage({type: 'streamlit:setComponentValue', value: 'logout'}, '*');
+    }
+    
+    // Listen for navigation events
+    window.addEventListener('message', (event) => {
+        if (event.data.type === 'streamlit:setComponentValue') {
+            if (event.data.value === 'logout') {
+                // Clear session storage
+                window.localStorage.removeItem('supabase.auth.token');
+            }
+        }
     });
     </script>
     """,
     unsafe_allow_html=True
 )
 
-# Handle component values from JS
+# Modified navigation handling in Python code
 if st.session_state.get('componentValue') == 'logout':
     from pages.auth import logout
     logout()
-    st.rerun()
+    st.session_state.clear()  # Clear all session state
+    st.switch_page("pages/auth.py")
 elif st.session_state.get('componentValue') == 'profile':
-    st.session_state['componentValue'] = None  # Reset the value
-    go_to_profile()
+    st.session_state['componentValue'] = None  # Reset the component value
+    st.switch_page("pages/user_profile.py")
 
-# Function to ensure user exists in the users table
 def ensure_user_exists(user_id):
     if not user_id:
         st.error("Invalid user ID. Please log in again.")
         from pages.auth import logout
         logout()
         st.rerun()
-        
     try:
         supabase = init_supabase()
-        # Check if user exists
         response = supabase.table('users').select('id').eq('id', user_id).execute()
-        
-        # If user doesn't exist, create them
         if not response.data:
             supabase.table('users').insert({
                 'id': user_id,
@@ -253,17 +230,14 @@ def ensure_user_exists(user_id):
     except Exception as e:
         st.error(f"Error ensuring user exists: {str(e)}")
 
-# Ensure current user exists in database
 ensure_user_exists(get_user_attribute(current_user, 'id'))
 
-# Function to retrieve user's saved skills from database
 @st.cache_data(ttl=60)
 def get_user_skills(user_id):
     try:
         supabase = init_supabase()
         response = supabase.table('skill_levels').select('*').eq('user_id', user_id).execute()
         if response.data:
-            # Convert to dictionary mapping skill_name to level
             skills_dict = {item['skill_name']: item['level'] for item in response.data}
             return skills_dict
         return {}
@@ -271,18 +245,17 @@ def get_user_skills(user_id):
         st.error(f"Error retrieving skills: {str(e)}")
         return {}
 
-# Function to retrieve user's previous analyses
+# Modified function to retrieve user's previous analyses - only get the latest one
 @st.cache_data(ttl=60)
 def get_user_analyses(user_id):
     try:
         supabase = init_supabase()
-        response = supabase.table('career_analyses').select('*').eq('user_id', user_id).order('analyzed_at', desc=True).limit(5).execute()
+        response = supabase.table('career_analyses').select('*').eq('user_id', user_id).order('analyzed_at', desc=True).limit(1).execute()
         return response.data
     except Exception as e:
         st.error(f"Error retrieving analyses: {str(e)}")
         return []
 
-# Function to get recommended courses
 @st.cache_data(ttl=300)
 def get_recommended_courses(target_role):
     try:
@@ -293,60 +266,61 @@ def get_recommended_courses(target_role):
         st.error(f"Error retrieving courses: {str(e)}")
         return []
 
-# Function to save skill levels to database
 def save_skill_levels(user_id, skills_data):
     try:
         supabase = init_supabase()
-        
-        # Convert skill level from text to numeric (1-7)
         proficiency_levels = [
             "Not Interested", "Poor", "Beginner", 
             "Average", "Intermediate", "Excellent", "Professional"
         ]
-        
-        # First, delete existing skill records for this user
         supabase.table('skill_levels').delete().eq('user_id', user_id).execute()
-        
-        # Then insert new records
         for skill_name, level_text in skills_data.items():
-            level_num = proficiency_levels.index(level_text)  # Convert to 0-6 scale (match CHECK constraint)
-            
+            level_num = proficiency_levels.index(level_text)
             supabase.table('skill_levels').insert({
                 'user_id': user_id,
                 'skill_name': skill_name,
                 'level': level_num
             }).execute()
-            
     except Exception as e:
         st.error(f"Error saving skills: {str(e)}")
 
-# Function to save career analysis
-def save_career_analysis(user_id, predicted_role, confidence_score, skill_gap):
+# Function to save career analysis - now with option to overwrite previous ones
+def save_career_analysis(user_id, predicted_role, confidence_score, skill_gap, overwrite=True):
     try:
         supabase = init_supabase()
-        supabase.table('career_analyses').insert({
+        # If overwrite is True, delete previous analyses
+        if overwrite:
+            supabase.table('career_analyses').delete().eq('user_id', user_id).execute()
+        # Insert new analysis
+        result = supabase.table('career_analyses').insert({
             'user_id': user_id,
             'predicted_role': predicted_role,
-            'confidence': confidence_score,  # Changed from confidence_score to confidence
+            'confidence': confidence_score,
             'skill_gap': json.dumps(skill_gap),
-            'analyzed_at': datetime.now().isoformat()  # Changed from created_at to analyzed_at
+            'analyzed_at': datetime.now().isoformat()
         }).execute()
+        # Store the latest analysis in session state for transfer to other pages
+        st.session_state.latest_analysis = {
+            'predicted_role': predicted_role,
+            'confidence': confidence_score,
+            'skill_gap': skill_gap,
+            'analyzed_at': datetime.now().isoformat()
+        }
+        return result
     except Exception as e:
         st.error(f"Error saving analysis: {str(e)}")
+        return None
 
-# Function to save user course enrollment
 def enroll_in_course(user_id, course_id):
     try:
         supabase = init_supabase()
-        # Check if already enrolled
         existing = supabase.table('user_courses').select('*').eq('user_id', user_id).eq('course_id', course_id).execute()
-        
         if not existing.data:
             supabase.table('user_courses').insert({
                 'user_id': user_id,
                 'course_id': course_id,
                 'completed': False,
-                'started_at': datetime.now().isoformat()  # Changed from implicit default to explicit
+                'started_at': datetime.now().isoformat()
             }).execute()
             return True
         return False
@@ -354,20 +328,18 @@ def enroll_in_course(user_id, course_id):
         st.error(f"Error enrolling in course: {str(e)}")
         return False
 
-# Get user's previous skills from database
 user_skills = get_user_skills(get_user_attribute(current_user, 'id'))
 
-# Convert numeric levels back to text labels for display
 def numeric_to_text_level(numeric_level):
     proficiency_levels = [
         "Not Interested", "Poor", "Beginner", 
         "Average", "Intermediate", "Excellent", "Professional"
     ]
     if isinstance(numeric_level, int) and 0 <= numeric_level <= 6:
-        return proficiency_levels[numeric_level]  # Changed from numeric_level - 1 to match 0-6 scale
-    return "Average"  # Default
+        return proficiency_levels[numeric_level]
+    return "Average"
 
-# ========== Hero Section ========== #
+# ========== Hero Section ==========
 colored_header(
     label="🚀 Career Path Predictor Pro",
     description="Discover your ideal tech career based on your skills",
@@ -386,17 +358,14 @@ with st.container():
         This tool analyzes your technical skills and proficiency levels to recommend the most suitable career path in the tech industry.
         """)
 
-# ========== Previous Analyses Section ========== #
+# ========== Previous Analyses Section ==========
 previous_analyses = get_user_analyses(get_user_attribute(current_user, 'id'))
 
 if previous_analyses:
     st.subheader("⏱️ Your Previous Career Analyses")
-    
-    # Convert datetime strings to more readable format
     for analysis in previous_analyses:
         created_at = datetime.fromisoformat(analysis['analyzed_at'].replace('Z', '+00:00'))
         analysis['formatted_date'] = created_at.strftime("%b %d, %Y at %I:%M %p")
-    
     analyses_cols = st.columns(min(len(previous_analyses), 3))
     for i, col in enumerate(analyses_cols):
         if i < len(previous_analyses):
@@ -414,9 +383,8 @@ if previous_analyses:
                     """,
                 ):
                     st.markdown(f"### {analysis['predicted_role']}")
-                    st.markdown(f"**Match Score:** {analysis['confidence']:.0%}")  # Changed from confidence_score to confidence
+                    st.markdown(f"**Match Score:** {analysis['confidence']:.0%}")
                     st.markdown(f"*{analysis['formatted_date']}*")
-                    
                     if 'skill_gap' in analysis and analysis['skill_gap']:
                         with st.expander("Skill Gaps"):
                             try:
@@ -426,16 +394,14 @@ if previous_analyses:
                             except:
                                 st.markdown("Skill gap information not available")
 
-# ========== Skill Input Section ========== #
+# ========== Skill Input Section ==========
 with st.expander("🔍 Step 1: Rate Your Skills", expanded=True):
     st.info("💡 Select your proficiency level for each skill area")
-    
     user_inputs = {}
     proficiency_levels = [
         "Not Interested", "Poor", "Beginner", 
         "Average", "Intermediate", "Excellent", "Professional"
     ]
-    
     for category, skills in categories.items():
         st.subheader(f"📚 {category}")
         for skill in skills:
@@ -454,46 +420,70 @@ with st.expander("🔍 Step 1: Rate Your Skills", expanded=True):
                     }
                 """,
             ):
-                # Use previous value from database if available, otherwise default to "Average"
-                default_level = "Average"
-                if skill in user_skills:
-                    default_level = numeric_to_text_level(user_skills[skill])
-                
-                default_index = proficiency_levels.index(default_level)
+                prev_level = numeric_to_text_level(user_skills.get(skill, 3))
                 user_inputs[skill] = st.selectbox(
-                    f"{skill} Level",
-                    proficiency_levels,
-                    index=default_index,
-                    key=skill
+                    f"{skill}",
+                    options=proficiency_levels,
+                    index=proficiency_levels.index(prev_level),
+                    key=f"input_{skill}"
                 )
 
-# ========== New Features Section ========== #
+    if st.button("Save My Skill Levels"):
+        save_skill_levels(get_user_attribute(current_user, 'id'), user_inputs)
+        st.success("Your skill levels have been saved!")
+        st.rerun()
+
+# ========== New Features Section ==========
 st.divider()
 st.header("✨ Enhanced Features")
 
 feature_cols = st.columns(3)
 with feature_cols[0]:
-    card(
-        title="Career Pathway",
-        text="Visualize your potential career progression and advancement opportunities",
-        image="https://cdn-icons-png.flaticon.com/512/1534/1534996.png"
-    )
+    with st.form("career_pathway_card_form", clear_on_submit=False):
+        card(
+            title="Career Pathway",
+            text="Visualize your potential career progression and advancement opportunities",
+            image="https://cdn-icons-png.flaticon.com/512/1534/1534996.png"
+        )
+        # Hidden submit button that will be triggered when the card is clicked
+        submitted = st.form_submit_button("View Career Pathway", use_container_width=True)
+        if submitted:
+            # Store current skill data in session state for use in the career pathway page
+            st.session_state.user_skills = {skill: proficiency_levels.index(level) for skill, level in user_inputs.items()}
+            # Navigate to the career pathway page
+            st.switch_page("pages/career_pathway.py")
 
 with feature_cols[1]:
-    card(
-        title="Skill Gap Analysis",
-        text="Identify areas for improvement based on industry requirements",
-        image="https://cdn-icons-png.flaticon.com/512/1534/1534968.png"
-    )
+    with st.form("skill_gap_card_form", clear_on_submit=False):
+        card(
+            title="Skill Gap Analysis",
+            text="Identify areas for improvement based on industry requirements",
+            image="https://cdn-icons-png.flaticon.com/512/1534/1534968.png"
+        )
+        # Hidden submit button that will be triggered when the card is clicked
+        submitted = st.form_submit_button("View Skill Gap Analysis", use_container_width=True)
+        if submitted:
+            # Store current skill data in session state for use in the skill gap analysis page
+            st.session_state.user_skills = {skill: proficiency_levels.index(level) for skill, level in user_inputs.items()}
+            # Navigate to the skill gap analysis page
+            st.switch_page("pages/skill_gap_analysis.py")
 
 with feature_cols[2]:
-    card(
-        title="Course Recommendations",
-        text="Get personalized learning resources tailored to your career goals",
-        image="https://cdn-icons-png.flaticon.com/512/1534/1534959.png"
-    )
-
-# ========== Prediction Section ========== #
+    with st.form("course_recommendations_card_form", clear_on_submit=False):
+        card(
+            title="Course Recommendations",
+            text="Get personalized learning resources tailored to your career goals",
+            image="https://cdn-icons-png.flaticon.com/512/1534/1534959.png"
+        )
+        # Hidden submit button that will be triggered when the card is clicked
+        submitted = st.form_submit_button("View Course Recommendations", use_container_width=True)
+        if submitted:
+            # Store current skill data in session state for use in the course recommendations page
+            st.session_state.user_skills = {skill: proficiency_levels.index(level) for skill, level in user_inputs.items()}
+            # Navigate to the course recommendations page
+            st.switch_page("pages/course_recommendations.py")
+            
+# ========== Prediction Section ==========
 st.divider()
 
 col1, col2, col3 = st.columns([1, 2, 1])
@@ -503,41 +493,32 @@ with col2:
 if analyze_button:
     with st.spinner("Crunching data and mapping opportunities..."):
         try:
-            # Save skill levels to database
             save_skill_levels(get_user_attribute(current_user, 'id'), user_inputs)
-            
-            # ======= CRITICAL UPDATE 3: Use encoder-defined order ======= #
             input_data = [user_inputs[skill] for skill in st.session_state.encoder_features]
-            
             with st.expander("Input Data Review", expanded=False):
                 df_input = pd.DataFrame([input_data], columns=st.session_state.encoder_features)
                 st.dataframe(df_input)
-            
             encoded_input = resources["feature_encoder"].transform(df_input)
             prediction = resources["model"].predict(encoded_input)
             predicted_career = resources["label_encoder"].inverse_transform(prediction)[0]
-            
             confidence_score = np.random.uniform(0.75, 0.95)
-            
-            # Generate skill gap analysis (simulated)
             skill_gap = {}
             for skill, level in user_inputs.items():
-                if proficiency_levels.index(level) < 5:  # If below "Excellent"
-                    if np.random.random() < 0.3:  # Only show some skills as gaps
+                if proficiency_levels.index(level) < 5:
+                    if np.random.random() < 0.3:
                         skill_gap[skill] = f"Consider improving from {level} to {proficiency_levels[proficiency_levels.index(level) + 1]}"
-            
-            # Save analysis to database
-            save_career_analysis(get_user_attribute(current_user, 'id'), predicted_career, confidence_score, skill_gap)
-            
-            # Get course recommendations
+            # Overwrite previous analyses: only keep the latest
+            save_career_analysis(
+                get_user_attribute(current_user, 'id'),
+                predicted_career,
+                confidence_score,
+                skill_gap,
+                overwrite=True
+            )
             recommended_courses = get_recommended_courses(predicted_career)
-            
             st.balloons()
-            
-            # Clear cache to refresh data
             get_user_analyses.clear()
             get_user_skills.clear()
-            
             with stylable_container(
                 key="result_container",
                 css_styles="""
@@ -569,27 +550,21 @@ if analyze_button:
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
-                
-                # Skill gap analysis
                 if skill_gap:
                     st.markdown("### 🧠 Skill Gap Analysis")
                     st.markdown("To excel in this career path, consider improving these skills:")
-                    
                     gap_cols = st.columns(min(3, len(skill_gap)))
                     for i, (skill, gap) in enumerate(skill_gap.items()):
                         with gap_cols[i % 3]:
                             st.markdown(f"**{skill}**")
                             st.markdown(f"_{gap}_")
-                
-                # Course recommendations
                 if recommended_courses:
                     st.markdown("### 📚 Recommended Courses")
-                    
                     for i, course in enumerate(recommended_courses):
                         with st.container():
                             cols = st.columns([3, 1])
                             with cols[0]:
-                                st.markdown(f"**{course['title']}**")  # Changed from name to title
+                                st.markdown(f"**{course['title']}**")
                                 st.markdown(f"{course['provider']} - {course.get('description', 'Learn key skills for this role')}")
                             with cols[1]:
                                 if st.button("Enroll", key=f"enroll_{i}"):
@@ -599,14 +574,12 @@ if analyze_button:
                                         st.info("You're already enrolled in this course")
                 else:
                     st.info("No specific courses found for this career path. We're continually adding new resources.")
-
         except Exception as e:
             st.error(f"Prediction error: {str(e)}")
             with st.expander("Technical Details", expanded=True):
                 st.write("Encoder features:", st.session_state.encoder_features)
                 st.write("UI categories:", sum(categories.values(), []))
 
-# ========== Footer ========== #
 st.divider()
 st.markdown("""
 <div style="text-align: center; color: #666; padding: 2rem 0;">
@@ -625,5 +598,23 @@ document.getElementById('footer-profile').addEventListener('click', function(e) 
     e.preventDefault();
     window.parent.postMessage({type: 'streamlit:setComponentValue', value: 'profile'}, '*');
 });
+document.addEventListener('DOMContentLoaded', function() {
+    // Get the Skill Gap Analysis card
+    const skillGapCard = document.querySelector('[data-testid="stForm"] .element-container:first-child');
+    
+    if (skillGapCard) {
+        // Make the card clickable
+        skillGapCard.style.cursor = 'pointer';
+        
+        // Trigger the form submission when the card is clicked
+        skillGapCard.addEventListener('click', function() {
+            const submitButton = document.querySelector('[data-testid="stForm"] button[type="submit"]');
+            if (submitButton) {
+                submitButton.click();
+            }
+        });
+    }
+});
 </script>
+            
 """, unsafe_allow_html=True)

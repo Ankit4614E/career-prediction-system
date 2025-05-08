@@ -127,7 +127,6 @@ def show_register_form(supabase):
                 handle_registration(supabase, name, email, age, designation, password)
 
 # Authentication handlers
-# Replace the existing handle_login function with:
 def handle_login(supabase, email, password):
     try:
         if not email or not password:
@@ -162,7 +161,13 @@ def handle_login(supabase, email, password):
         st.switch_page("pages/career_predictor.py")
 
     except Exception as e:
-        st.error(f"Login failed: {str(e)}")
+        error_message = str(e)
+        if "Invalid login credentials" in error_message:
+            st.error("Incorrect email or password. Please try again.")
+        elif "Email not confirmed" in error_message:
+            st.error("Please confirm your email address before logging in.")
+        else:
+            st.error(f"Login failed: {error_message}")
 
 def handle_registration(supabase, name, email, age, designation, password):
     from datetime import datetime
@@ -196,7 +201,6 @@ def handle_registration(supabase, name, email, age, designation, password):
             # Insert user data and handle any exceptions
             try:
                 insert_result = supabase.table('users').insert(user_data).execute()
-                # No need to check for error attribute, if there's an issue it will raise an exception
             except Exception as insert_error:
                 st.error("Failed to store user details in the database.")
                 st.error(f"Insert error: {str(insert_error)}")
@@ -225,8 +229,15 @@ def handle_registration(supabase, name, email, age, designation, password):
             st.success("Check your email to confirm registration before logging in.")
 
     except Exception as e:
-        st.error("Registration failed due to an unexpected error.")
-        st.error(f"{type(e).__name__}: {str(e)}")
+        error_message = str(e)
+        
+        # Check for specific error messages
+        if "User already registered" in error_message or "already exists" in error_message.lower():
+            st.error("This email is already registered. Please log in or use a different email address.")
+        elif "password" in error_message.lower():
+            st.error("Password error: " + error_message)
+        else:
+            st.error(f"Registration failed: {error_message}")
 
 def validate_registration(name, email, age, designation, password, confirm_password):
     if not name:
