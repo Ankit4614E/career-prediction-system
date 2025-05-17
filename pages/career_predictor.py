@@ -10,6 +10,13 @@ from streamlit_extras.colored_header import colored_header
 from streamlit_extras.card import card
 from streamlit_extras.stylable_container import stylable_container
 
+# Set page config as the first Streamlit command
+st.set_page_config(
+    page_title="Career Path Predictor Pro",
+    page_icon="🚀",
+    layout="wide"
+)
+
 def get_user_attribute(user_obj, attribute, default_value=None):
     if isinstance(user_obj, dict):
         return user_obj.get(attribute, default_value)
@@ -31,11 +38,16 @@ def check_auth():
         st.switch_page("pages/auth.py")
     return st.session_state.auth.get('user')
 
-st.set_page_config(
-    page_title="Career Path Predictor Pro",
-    page_icon="🚀",
-    layout="wide"
-)
+# Define logout function here to avoid circular imports
+def logout():
+    try:
+        if 'auth' in st.session_state:
+            st.session_state.auth = {'logged_in': False}
+        st.session_state.clear()
+    except Exception as e:
+        st.error(f"Error during logout: {str(e)}")
+    finally:
+        st.switch_page("pages/auth.py")
 
 MODEL_PATH = "career_model.pkl"
 FEATURE_ENCODER_PATH = "feature_encoder.pkl"
@@ -154,6 +166,77 @@ st.markdown("""
     .user-profile a:hover {
         text-decoration: underline;
     }
+    /* Profile Menu Styling */
+    .profile-dropdown-container {
+        position: fixed;
+        top: 18px;
+        right: 32px;
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        width: auto !important;
+    }
+    .profile-dropdown-btn {
+        background: linear-gradient(to right, #8e44ad, #6c5ce7);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 44px;
+        height: 44px;
+        font-size: 1.6rem;
+        font-weight: bold;
+        cursor: pointer;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.13);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.15s;
+    }
+    .profile-dropdown-btn:hover {
+        transform: scale(1.07);
+    }
+    .dropdown-content {
+        margin-top: 8px;
+        background-color: #fff;
+        min-width: 180px;
+        max-width: 200px;
+        width: auto !important;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        padding: 12px;
+        text-align: center;
+        animation: fadeIn 0.2s;
+    }
+    @keyframes fadeIn {
+        from {opacity: 0; transform: translateY(-10px);}
+        to {opacity: 1; transform: translateY(0);}
+    }
+    .dropdown-content p {
+        font-weight: 600;
+        font-size: 14px;
+        margin-bottom: 10px;
+    }
+    /* Fix for button columns */
+    .profile-menu-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+    }
+    .profile-menu-buttons .stButton {
+        width: 100%;
+    }
+    .profile-menu-buttons .stButton > button {
+        width: 100%;
+        margin: 0;
+    }
+    .profile-menu-buttons .logout-btn button {
+        background: linear-gradient(to right, #e74c3c, #c0392b);
+    }
+    .profile-menu-buttons .logout-btn button:hover {
+        opacity: 0.95;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -161,62 +244,62 @@ def go_to_profile():
     st.session_state['show_profile'] = True
     st.switch_page("pages/user_profile.py")
 
+# Fetch user name and profile image
 user_name = get_user_attribute(current_user, 'name', get_user_attribute(current_user, 'email', 'User'))
 
-# Modified user profile section with proper navigation handling
-st.markdown(
-    f"""
-    <div class="user-profile">
-        <span>Welcome, <a href="#" id="profile-link" onclick="handleProfileClick(event)">{user_name}</a></span>
-        <span>|</span>
-        <a href="#" id="logout-link" onclick="handleLogoutClick(event)">Logout</a>
-    </div>
-    """, 
-    unsafe_allow_html=True
-)
+# Profile menu toggle
+if "menu_open" not in st.session_state:
+    st.session_state.menu_open = False
 
-# Updated JavaScript handling
-st.markdown(
-    """
-    <script>
-    function handleProfileClick(e) {
-        e.preventDefault();
-        window.parent.postMessage({type: 'streamlit:setComponentValue', value: 'profile'}, '*');
-    }
-    
-    function handleLogoutClick(e) {
-        e.preventDefault();
-        window.parent.postMessage({type: 'streamlit:setComponentValue', value: 'logout'}, '*');
-    }
-    
-    // Listen for navigation events
-    window.addEventListener('message', (event) => {
-        if (event.data.type === 'streamlit:setComponentValue') {
-            if (event.data.value === 'logout') {
-                // Clear session storage
-                window.localStorage.removeItem('supabase.auth.token');
-            }
-        }
-    });
-    </script>
-    """,
-    unsafe_allow_html=True
-)
+def toggle_dropdown():
+    st.session_state.menu_open = not st.session_state.menu_open
 
-# Modified navigation handling in Python code
-if st.session_state.get('componentValue') == 'logout':
-    from pages.auth import logout
-    logout()
-    st.session_state.clear()  # Clear all session state
-    st.switch_page("pages/auth.py")
-elif st.session_state.get('componentValue') == 'profile':
-    st.session_state['componentValue'] = None  # Reset the component value
-    st.switch_page("pages/user_profile.py")
+# --- Profile Dropdown Menu (Top Right) ---
+with st.container():
+    st.markdown('<div class="profile-dropdown-container">', unsafe_allow_html=True)
+    
+    # Profile button
+    profile_btn_clicked = st.button("👤", key="profile_menu_btn", help="Profile menu")
+    if profile_btn_clicked:
+        st.session_state.menu_open = not st.session_state.menu_open
+        st.rerun()
+
+    # Dropdown menu content
+    if st.session_state.menu_open:
+        with st.container():
+            st.markdown(f"""
+                <div class="dropdown-content">
+                    <p>{user_name}</p>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            # Profile and logout buttons
+            with st.container():
+                st.markdown('<div class="profile-menu-buttons">', unsafe_allow_html=True)
+                
+                profile_clicked = st.button("My Profile", key="profile_btn", use_container_width=True)
+                
+                # Use local logout function instead of importing
+                with st.container():
+                    st.markdown('<div class="logout-btn">', unsafe_allow_html=True)
+                    logout_clicked = st.button("Logout", key="logout_btn", use_container_width=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            if profile_clicked:
+                st.session_state.menu_open = False
+                st.switch_page("pages/user_profile.py")
+
+            if logout_clicked:
+                # Call our local logout function
+                logout()
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 def ensure_user_exists(user_id):
     if not user_id:
         st.error("Invalid user ID. Please log in again.")
-        from pages.auth import logout
         logout()
         st.rerun()
     try:
@@ -615,6 +698,5 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
-</script>
-            
+</script>                  
 """, unsafe_allow_html=True)

@@ -609,7 +609,7 @@ st.markdown("### Next Steps")
 col1, col2 = st.columns(2)
 with col1:
     if st.button("Back to Career Predictor", use_container_width=True):
-        st.switch_page("career_predictor.py")
+        st.switch_page("pages/career_predictor.py")
 
 with col2:
     if st.button("View My Profile", use_container_width=True):
